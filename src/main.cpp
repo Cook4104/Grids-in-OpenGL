@@ -1,5 +1,5 @@
-const int width = 960, height = 960;
-float scale = 15;
+int width = 960, height = 960;
+float scale = 150;
 
 #include <iostream>
 
@@ -16,8 +16,15 @@ float scale = 15;
 
 #include <vector>
 
+#include <siv/PerlinNoise.hpp>
+
 GLuint vao, vbo;
-bool wireframe = false;
+bool wireframe = false , swap = false;
+
+union IntFloat {
+	int x;
+	float y;
+};
 
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
 	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
@@ -26,34 +33,50 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
 		wireframe = !wireframe;
 		glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
 	}
+	if (key == GLFW_KEY_B && action == GLFW_PRESS) {
+		swap = !swap;
+	}
+}
+
+void windowSizeCallback(GLFWwindow* window, int newWidth, int newHeight) {
+	width = newWidth;
+	height = newHeight;
+	glViewport(0, 0, newWidth, newHeight);
 }
 
 void scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
-	scale -= yoffset;
-	scale = glm::clamp<float>(scale, 1, 50);
+	scale -= yoffset * scale*0.25;
+	scale = glm::clamp<float>(scale, 1, 1000);
 }
 
 struct TileVertex {
 	glm::vec2 aPos;
 	int tile;
 	glm::vec2 aUV;
+	float height;
 };
 
 std::vector<TileVertex> vertexBuffer;
 
-void AddChunkToVertexBuffer(Grid& grid, ChunkCoordinate coord) {
+siv::PerlinNoise perlin{ std::random_device() };
+
+void AddChunkToVertexBuffer(Grid& grid,Grid& heightGrid, ChunkCoordinate coord) {
 	GridChunk chunk = grid.GetChunk(coord);
+	GridChunk heightChunk = heightGrid.GetChunk(coord);
 	for (int y = 15; y >= 0; y--) {
 		for (int x = 0; x < 16; x++) {
 			if (chunk.Tiles[y][x] == 0) continue;
 			int tile = chunk.Tiles[y][x];
-			vertexBuffer.push_back({ {(coord.x * 16) + 0 + x,(coord.y * 16) + 0 + y} , tile , {0,0} });
-			vertexBuffer.push_back({ {(coord.x * 16) + 0 + x,(coord.y * 16) + 1 + y} , tile , {0,(float)1 / 16} });
-			vertexBuffer.push_back({ {(coord.x * 16) + 1 + x,(coord.y * 16) + 0 + y} , tile , {(float)1 / 16,0} });
+			IntFloat intAndFloat;
+			intAndFloat.x = heightChunk.Tiles[y][x];
+			float height = intAndFloat.y;
+			vertexBuffer.push_back({ {(coord.x * 16) + 0 + x,(coord.y * 16) + 0 + y} , tile , {0,0},height});
+			vertexBuffer.push_back({ {(coord.x * 16) + 0 + x,(coord.y * 16) + 1 + y} , tile , {0,(float)1 / 16},height});
+			vertexBuffer.push_back({ {(coord.x * 16) + 1 + x,(coord.y * 16) + 0 + y} , tile , {(float)1 / 16,0},height});
 
-			vertexBuffer.push_back({ {(coord.x * 16) + 1 + x,(coord.y * 16) + 0 + y} , tile , {(float)1 / 16,0} });
-			vertexBuffer.push_back({ {(coord.x * 16) + 0 + x,(coord.y * 16) + 1 + y} , tile , {0,(float)1 / 16} });
-			vertexBuffer.push_back({ {(coord.x * 16) + 1 + x,(coord.y * 16) + 1 + y} , tile , {(float)1 / 16,(float)1 / 16} });
+			vertexBuffer.push_back({ {(coord.x * 16) + 1 + x,(coord.y * 16) + 0 + y} , tile , {(float)1 / 16,0},height});
+			vertexBuffer.push_back({ {(coord.x * 16) + 0 + x,(coord.y * 16) + 1 + y} , tile , {0,(float)1 / 16},height});
+			vertexBuffer.push_back({ {(coord.x * 16) + 1 + x,(coord.y * 16) + 1 + y} , tile , {(float)1 / 16,(float)1 / 16},height});
 		}
 	}
 }
@@ -79,11 +102,14 @@ int main() {
 		return -1;
 	}
 
+	glfwSetWindowSizeCallback(mWindow, windowSizeCallback);
 	glfwSetKeyCallback(mWindow, keyCallback);
 	glfwSetScrollCallback(mWindow, scrollCallback);
 #pragma endregion
 
-	Grid firstGrid = Grid();
+	int startRadius = 10;
+	Grid* firstGrid = new Grid(startRadius);
+	Grid* heightGrid = new Grid(startRadius);
 	//firstGrid.SetIndexAt(0, 0, 2);
 	//firstGrid.SetIndexAt(3, 0, 1);
 	//firstGrid.SetIndexAt(0, 1, 2);
@@ -92,12 +118,35 @@ int main() {
 	//firstGrid.SetIndexAt(2, 2, 4);
 	//firstGrid.SetIndexAt(0, 3, 1);
 	//firstGrid.SetIndexAt(3, 3, 1);
-	for (int y = 0; y < 32; y++) {
-		for (int x = 0; x < 32; x++) {
-			firstGrid.SetIndexAt(x, y, 1);
+
+
+	for (int y = -startRadius*16; y < startRadius * 16; y++) {
+		for (int x = -startRadius * 16; x < startRadius * 16; x++) {
+			float frequency = 0.48f;
+			float fx = x * (frequency / 16.0f);
+			float fy = y * (frequency / 16.0f);
+			float height = perlin.octave2D_01(fx, fy, 10,0.5);
+			float threshold = 0.35f;
+
+			float distance = std::sqrtf((fx * fx) + (fy * fy));
+
+			height -= fmaxf(0.0f,(distance * distance) * 0.050f);
+			height *= 1.15f;
+
+			int chosenIndex = 4;
+
+			if (height >= 0.07f) chosenIndex = 2;
+			if (height >= 0.2f) chosenIndex = 1;
+			if (height >= 0.545f) chosenIndex = 3;
+			if (height >= 0.78f) chosenIndex = 6;
+
+			IntFloat intAndfloat;
+			intAndfloat.y = height;
+			firstGrid->SetIndexAt(x, y, chosenIndex);
+			heightGrid->SetIndexAt(x, y, intAndfloat.x);
 		}
 	}
-	firstGrid.SetIndexAt(15, 15, 4);
+
 	PolyEngine::ShaderProgram* defaultShader = new PolyEngine::ShaderProgram();
 	defaultShader->AddShader("resource/default.vert", PolyEngine::VERTEX);
 	defaultShader->AddShader("resource/default.frag", PolyEngine::FRAGMENT);
@@ -108,10 +157,16 @@ int main() {
 	tileAtlasTexture.TexParameterI(GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	tileAtlasTexture.TexParameterI(GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-	AddChunkToVertexBuffer(firstGrid, { 0,0 });
-	AddChunkToVertexBuffer(firstGrid, { 1,0 });
-	AddChunkToVertexBuffer(firstGrid, { 0,1 });
-	AddChunkToVertexBuffer(firstGrid, { 1,1 });
+	//AddChunkToVertexBuffer(firstGrid, { 0,0 });
+	//AddChunkToVertexBuffer(firstGrid, { -1,0 });
+	//AddChunkToVertexBuffer(firstGrid, { 0,-1 });
+	//AddChunkToVertexBuffer(firstGrid, { -1,-1 });
+
+	for (int y = -startRadius; y < startRadius; y++) {
+		for (int x = -startRadius; x < startRadius; x++) {
+			AddChunkToVertexBuffer(*firstGrid, *heightGrid ,{ x,y });
+		}
+	}
 
 #pragma region VertexInitialization
 	glGenVertexArrays(1, &vao);
@@ -119,21 +174,24 @@ int main() {
 	glGenBuffers(1, &vbo);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
 	glBufferData(GL_ARRAY_BUFFER, vertexBuffer.size() * sizeof(TileVertex), vertexBuffer.data(), GL_DYNAMIC_DRAW);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float) + sizeof(int), (void*)0);
+	int stride = 5 * sizeof(float) + sizeof(int);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE,stride, (void*)0);
 	glEnableVertexAttribArray(0);
-	//glVertexAttribPointer(1, 1, GL_INT, GL_FALSE, 2 * sizeof(float) + sizeof(int), (void*)(2 * sizeof(float)));
-	glVertexAttribIPointer(1, 1, GL_INT, 4 * sizeof(float) + sizeof(int), (void*)(2 * sizeof(float)));
+	glVertexAttribIPointer(1, 1, GL_INT,stride, (void*)(2 * sizeof(float)));
 	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float) + sizeof(int), (void*)(2 * sizeof(float) + sizeof(int)));
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE,stride, (void*)(2 * sizeof(float) + sizeof(int)));
 	glEnableVertexAttribArray(2);
+	glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, stride, (void*)(4 * sizeof(float) + sizeof(int)));
+	glEnableVertexAttribArray(3);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glBindVertexArray(0);
 #pragma endregion
 
 	glm::mat4 model, view, projection;
 	model = glm::translate(glm::mat4(1.0f),glm::vec3(5,0,0));
+	model = glm::scale(model, glm::vec3(8, 8, 1));
 	view = glm::lookAt(glm::vec3(0, 0, 1), glm::vec3(0, 0, -1), glm::vec3(0, 1, 0));
-	float aspect = width / height;
+	float aspect = (float)width / (float)height;
 	projection = glm::ortho<float>(-aspect * scale, aspect * scale, -scale, scale, 0.01f, 100.0f);
 
 	defaultShader->Activate();
@@ -147,7 +205,7 @@ int main() {
 		glClearColor(0, 0, 0, 1);
 		glClear(GL_COLOR_BUFFER_BIT);
 
-
+		aspect = (float)width / (float)height;
 		projection = glm::ortho<float>(-aspect * scale, aspect * scale, -scale, scale, 0.01f, 100.0f);
 
 		if (glfwGetKey(mWindow, GLFW_KEY_W) == GLFW_PRESS) {
@@ -166,6 +224,7 @@ int main() {
 		defaultShader->Activate();
 		defaultShader->UniformMatrix4f("view", view);
 		defaultShader->UniformMatrix4f("projection", projection);
+		defaultShader->Uniform1i("swap", swap);
 		tileAtlasTexture.UseTexture(0);
 		glBindVertexArray(vao);
 		glDrawArrays(GL_TRIANGLES, 0, vertexBuffer.size());

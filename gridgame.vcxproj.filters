@@ -41,5 +41,8 @@
     <ClInclude Include="src\render_code\polyengine\Textures.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="includes\siv\PerlinNoise.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

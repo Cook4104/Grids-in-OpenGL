@@ -1,6 +1,11 @@
 #include "grid.h"
 #include <assert.h>
 
+int sign(int _x) {
+	if (_x == 0) return 0;
+	return signbit(_x) ? -1 : 1;
+}
+
 Grid::Grid(int startRadius) {
 	for (int y = -startRadius; y < startRadius; y++) { // create starting chunks from a diameter
 		for (int x = -startRadius; x < startRadius; x++) {
@@ -17,8 +22,8 @@ void Grid::SetIndexAt(int x, int y,int index) {
 	ChunkCoordinate calcCoord = { (int)floorf((float)x / 16.0f),(int)floorf((float)y / 16.0f) };
 	if (Chunks.find(calcCoord) != Chunks.end()) {
 		GridChunk& foundChunk = Chunks[calcCoord];
-		int tileX = (x % 16) + (signbit(x) * 16);
-		int tileY = (y % 16) + (signbit(y) * 16);
+		int tileX = (x % 16+16)%16;
+		int tileY = (y % 16+16)%16;
 		foundChunk.Tiles[tileY][tileX] = index;
 		return;
 	}
