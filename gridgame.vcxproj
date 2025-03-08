@@ -142,7 +142,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\glad\glad.c" />
-    <ClCompile Include="src\grid.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\render_code\polyengine\Shader.cpp" />
     <ClCompile Include="src\render_code\polyengine\Textures.cpp" />

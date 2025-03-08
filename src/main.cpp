@@ -26,6 +26,11 @@ union IntFloat {
 	float y;
 };
 
+struct Tile {
+	int tile;
+	float height;
+};
+
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
 	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
 		glfwSetWindowShouldClose(window, 1);
@@ -60,16 +65,14 @@ std::vector<TileVertex> vertexBuffer;
 
 siv::PerlinNoise perlin{ std::random_device() };
 
-void AddChunkToVertexBuffer(Grid& grid,Grid& heightGrid, ChunkCoordinate coord) {
+void AddChunkToVertexBuffer(Grid<Tile>& grid, ChunkCoordinate coord) {
 	GridChunk chunk = grid.GetChunk(coord);
-	GridChunk heightChunk = heightGrid.GetChunk(coord);
 	for (int y = 15; y >= 0; y--) {
 		for (int x = 0; x < 16; x++) {
-			if (chunk.Tiles[y][x] == 0) continue;
-			int tile = chunk.Tiles[y][x];
-			IntFloat intAndFloat;
-			intAndFloat.x = heightChunk.Tiles[y][x];
-			float height = intAndFloat.y;
+			if (chunk.Tiles[y][x].tile == 0) continue;
+			Tile tileStruct = chunk.Tiles[y][x];
+			int tile = tileStruct.tile;
+			float height = tileStruct.height;
 			vertexBuffer.push_back({ {(coord.x * 16) + 0 + x,(coord.y * 16) + 0 + y} , tile , {0,0},height});
 			vertexBuffer.push_back({ {(coord.x * 16) + 0 + x,(coord.y * 16) + 1 + y} , tile , {0,(float)1 / 16},height});
 			vertexBuffer.push_back({ {(coord.x * 16) + 1 + x,(coord.y * 16) + 0 + y} , tile , {(float)1 / 16,0},height});
@@ -108,8 +111,7 @@ int main() {
 #pragma endregion
 
 	int startRadius = 10;
-	Grid* firstGrid = new Grid(startRadius);
-	Grid* heightGrid = new Grid(startRadius);
+	Grid<Tile>* firstGrid = new Grid<Tile>(startRadius);
 	//firstGrid.SetIndexAt(0, 0, 2);
 	//firstGrid.SetIndexAt(3, 0, 1);
 	//firstGrid.SetIndexAt(0, 1, 2);
@@ -140,10 +142,10 @@ int main() {
 			if (height >= 0.545f) chosenIndex = 3;
 			if (height >= 0.78f) chosenIndex = 6;
 
-			IntFloat intAndfloat;
-			intAndfloat.y = height;
-			firstGrid->SetIndexAt(x, y, chosenIndex);
-			heightGrid->SetIndexAt(x, y, intAndfloat.x);
+			Tile insertedTile;
+			insertedTile.height = height;
+			insertedTile.tile = chosenIndex;
+			firstGrid->SetElementAt(x, y, insertedTile);
 		}
 	}
 
@@ -164,7 +166,7 @@ int main() {
 
 	for (int y = -startRadius; y < startRadius; y++) {
 		for (int x = -startRadius; x < startRadius; x++) {
-			AddChunkToVertexBuffer(*firstGrid, *heightGrid ,{ x,y });
+			AddChunkToVertexBuffer(*firstGrid,{ x,y });
 		}
 	}
 
